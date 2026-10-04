@@ -10,6 +10,9 @@ from botocore.exceptions import ClientError
 # Set environment variables before importing app
 os.environ['TABLE_NAME'] = 'test-table'
 os.environ['BASE_URL'] = 'https://api.example.com'
+os.environ.setdefault('AWS_DEFAULT_REGION', 'us-east-1')
+os.environ.setdefault('AWS_ACCESS_KEY_ID', 'testing')
+os.environ.setdefault('AWS_SECRET_ACCESS_KEY', 'testing')
 
 from url_shortener.app import (
     lambda_handler,

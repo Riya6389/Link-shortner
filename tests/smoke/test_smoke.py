@@ -4,7 +4,7 @@ Run after a production deploy to confirm the API is up and wired correctly.
 They never create links, so they leave no data in the production table.
 
 Usage:
-    export SMOKE_API_ENDPOINT=https://url-shortener.berlintechs.com
+    export SMOKE_API_ENDPOINT=https://<your-api-id>.execute-api.us-east-1.amazonaws.com/Prod
     pytest tests/smoke/
 """
 

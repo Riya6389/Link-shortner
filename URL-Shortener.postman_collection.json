@@ -21,7 +21,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"url\": \"https://github.com/AbdulWaseaDev/url-shortener\"\n}"
+          "raw": "{\n  \"url\": \"https://github.com/Riya6389/url-shortener\"\n}"
         },
         "url": {
           "raw": "{{base_url}}/links",
@@ -78,7 +78,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "https://url-shortener.berlintechs.com"
+      "value": "https://url-shortener.yourdomain.com"
     },
     {
       "key": "api_key",

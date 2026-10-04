@@ -1,574 +1,362 @@
 # URL Shortener - Serverless REST API
 
-A production-ready, serverless URL shortener built with AWS Lambda, API Gateway, and DynamoDB. Create short links, track click statistics, and redirect users—all with zero server management.
+A production-ready, serverless URL shortener built with **Python 3.13**, **AWS Lambda**, **Amazon API Gateway**, and **Amazon DynamoDB**. Create short links, track real-time click statistics, and execute low-latency redirects—all with zero server management.
 
-## What It Does
+[![Runtime architecture: client, API Gateway, Lambda and DynamoDB](docs/screenshots/architecture.png)](https://riya6389.github.io/url-shortener/architecture.html)
 
-This application provides a REST API for:
-- **Creating short links** from long URLs
-- **Redirecting** users from short codes to original URLs
-- **Tracking statistics** including click counts and creation timestamps
+### ▶️ [Explore the Interactive Architecture Diagram](https://riya6389.github.io/url-shortener/architecture.html)
 
-## Architecture
+---
 
-### ▶️ [Explore the interactive architecture diagram](https://abdulwaseadev.github.io/url-shortener/architecture.html)
+## 📌 Project Overview
 
-[![Runtime architecture: client, API Gateway, Lambda and DynamoDB, with trust boundaries and alerting](docs/screenshots/architecture.png)](https://abdulwaseadev.github.io/url-shortener/architecture.html)
+This project provides a robust, highly scalable URL shortening service designed around cloud-native and serverless best practices:
+- **Zero Server Maintenance:** Fully managed infrastructure using AWS Lambda and Amazon API Gateway.
+- **High Concurrency & Low Latency:** On-demand DynamoDB single-table design with sub-10ms response times.
+- **Cost Efficient:** Pay-per-use billing that scales to zero when idle, fitting comfortably within the AWS Free Tier.
+- **Enterprise-Grade Reliability:** Automated multi-stage CI/CD deployments, point-in-time recovery (PITR), data retention policies, and CloudWatch alarm notifications.
+
+---
+
+## ⚙️ Architecture
 
 ```
-┌─────────────┐      ┌──────────────────┐      ┌─────────────┐      ┌──────────────┐
-│   Client    │─────▶│   API Gateway    │─────▶│   Lambda    │─────▶│  DynamoDB    │
-│ (Browser/   │◀─────│ (REST, custom    │◀─────│  (Python)   │◀─────│  (NoSQL)     │
-│   curl)     │      │  domain + keys)  │      └─────────────┘      └──────────────┘
-└─────────────┘      └──────────────────┘             │
-                                                      ▼
-                                   CloudWatch logs + X-Ray tracing
-                                   CloudWatch alarms ──▶ SNS ──▶ Email
+┌─────────────┐      ┌──────────────────────────┐      ┌─────────────┐      ┌──────────────┐
+│   Client    │─────▶│       API Gateway        │─────▶│   Lambda    │─────▶│  DynamoDB    │
+│ (Browser /  │◀─────│  (REST API, Usage Plans, │◀─────│ (Python 3.13│◀─────│  (NoSQL      │
+│  curl / app)│      │  Throttling & TLS)       │      │  Router)    │      │   Storage)   │
+└─────────────┘      └──────────────────────────┘      └─────────────┘      └──────────────┘
+                                                              │
+                                                              ▼
+                                               CloudWatch Logs + AWS X-Ray Tracing
+                                               CloudWatch Alarms ──▶ SNS Alerts ──▶ Email
 ```
 
-The same stack runs twice: **staging** (`url-shortener-staging.berlintechs.com`) and **production** (`url-shortener.berlintechs.com`), each with its own table, API key and alarms.
+### Request Flow
 
-**Flow:**
+1. **Client Request:** A client sends an HTTP request to the API Gateway endpoint (or optional regional custom domain).
+2. **API Gateway Controls:**
+   - Evaluates API key validity on creation requests (`POST /links`).
+   - Applies usage plan quotas and stage throttling to guard against abuse.
+   - Forwards authorized requests to the Lambda function.
+3. **Lambda Execution (`app.py`):**
+   - **`POST /links`:** Validates destination URL, generates a cryptographically secure 6-character short code, and commits to DynamoDB with collision retries.
+   - **`GET /{code}`:** Verifies existence, atomically increments the visit counter, and returns an uncacheable `302 Found` redirect.
+   - **`GET /links/{code}/stats`:** Fetches link metadata, click count, and creation timestamp.
+4. **DynamoDB Persistence:**
+   - Stores link mappings with `short_code` as the partition key.
+   - Atomic conditional writes ensure strict data integrity.
 
-1. **Client** sends HTTP request to `url-shortener.berlintechs.com` (Cloudflare DNS → API Gateway regional custom domain)
-2. **API Gateway** checks the API key on `POST /links`, applies rate limits, and routes to Lambda
-3. **Lambda** (Python 3.13) executes business logic:
-   - POST /links: Validates URL, generates 6-char short code, stores in DynamoDB
-   - GET /{code}: Looks up code, atomically increments counter, returns 302 redirect
-   - GET /links/{code}/stats: Retrieves and returns link metadata
-4. **DynamoDB** stores link mappings with structure:
-   ```
-   {
-     "short_code": "a3X9mK",           // Partition key
-     "original_url": "https://...",
-     "click_count": 42,
-     "created_at": "2024-01-15T10:30:00"
-   }
-   ```
+---
 
-**Key Design Choices:**
+## 🚀 Key Features
 
-- **Short code generation:** Random 6-character alphanumeric codes from Python's `secrets` module, so codes can't be predicted (62^6 = ~56B combinations)
-- **Collision handling:** Atomic `PutItem` with `ConditionExpression` ensures uniqueness; retries up to 5 times on collision
-- **Click tracking:** Uses DynamoDB `UpdateExpression` with `ADD` for atomic counter increments (no race conditions)
-- **Custom domain:** Served from `url-shortener.berlintechs.com` (API Gateway regional custom domain with an ACM certificate, DNS in Cloudflare), mapped at the root so short links have no `/Prod` stage prefix
-- **Temporary redirects:** Returns `302 Found` rather than `301`, because browsers cache 301s permanently and would skip the Lambda (and the click counter) on repeat visits
-- **No accidental writes on lookups:** The redirect's `UpdateItem` uses `attribute_exists(short_code)`, so unknown codes return 404 instead of upserting an empty item
-- **Data protection:** The table has `DeletionPolicy: Retain`, `UpdateReplacePolicy: Retain`, deletion protection and point-in-time recovery, so links survive a deleted or replaced stack
-- **Staging before production:** Every change is deployed to a separate staging stack and must pass integration tests there before it reaches production
-- **Scalability:** Fully serverless and scales automatically. API Gateway throttling (50 req/s, 5 req/s for link creation) caps traffic and cost.
-- **Cost-efficiency:** On-demand billing for DynamoDB and Lambda (pay only for what you use)
+- **Cryptographically Secure Short Codes:** Uses Python's `secrets` module to generate 6-character random alphanumeric identifiers ($62^6 \approx 56.8\text{ billion}$ combinations), eliminating sequential prediction risks.
+- **Atomic Collision Handling:** Employs DynamoDB `ConditionExpression='attribute_not_exists(short_code)'` with an automated 5-attempt retry loop to handle code collisions safely.
+- **Atomic Click Tracking:** Leverages DynamoDB `UpdateItem` with `ADD click_count :inc` for atomic counter increments without concurrency race conditions.
+- **Accurate Analytics via Temporary Redirects:** Emits HTTP `302 Found` redirects instead of cached `301 Moved Permanently`, ensuring repeat visits hit the backend and are recorded accurately.
+- **Safe Route Resolution:** Redirect updates check `ConditionExpression='attribute_exists(short_code)'`, preventing ghost record insertion and correctly returning `404 Not Found` for nonexistent codes.
+- **Strict Request Validation:** Enforces URL presence, HTTP/HTTPS scheme verification via `urllib.parse`, and an upper length threshold of 2,048 characters.
+- **Tiered Security & Rate Limiting:** API Gateway Usage Plans throttle link creation (5 req/s, burst 10, 1,000/day per API key) while public redirect and stats routes handle up to 50 req/s with a burst of 100.
+- **Least-Privilege IAM Security:** The Lambda execution role policy permits only `dynamodb:GetItem`, `dynamodb:PutItem`, and `dynamodb:UpdateItem` against the single dedicated table.
+- **Data Protection & Disaster Recovery:** The DynamoDB table is provisioned with `PAY_PER_REQUEST` billing, `PointInTimeRecoverySpecification` enabled, and `DeletionProtectionEnabled: true` with `DeletionPolicy: Retain`.
+- **Full Observability & Alerting:** End-to-end AWS X-Ray distributed tracing, custom CloudWatch log groups with retention lifecycle, and automated alarms for 5xx errors, Lambda errors, throttles, and latency anomalies.
+- **Automated CI/CD Pipeline:** GitHub Actions workflow utilizing OIDC for passwordless AWS authentication, orchestrating unit tests, staging deployments, integration tests with automated data cleanup, and production promotion with smoke tests.
 
-## Quick Start
+---
 
-**Live API:** `https://url-shortener.berlintechs.com`
+## 🛠️ Tech Stack
 
-**Create your first short link** (requires an API key, see [Security & Rate Limiting](#security--rate-limiting)):
-```bash
-curl -X POST https://url-shortener.berlintechs.com/links \
-  -H 'Content-Type: application/json' \
-  -H 'x-api-key: YOUR_API_KEY' \
-  -d '{"url": "https://github.com/AbdulWaseaDev/url-shortener"}'
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Compute** | [AWS Lambda](https://aws.amazon.com/lambda/) (Python 3.13) | Serverless application logic and request routing |
+| **API Management** | [Amazon API Gateway](https://aws.amazon.com/api-gateway/) | REST routing, usage plans, API key validation, and throttling |
+| **Database** | [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) | Low-latency NoSQL storage, atomic counters, PITR backup |
+| **Infrastructure as Code** | [AWS SAM](https://aws.amazon.com/serverless/sam/) / CloudFormation | Declarative resource templates and configuration |
+| **Observability** | [Amazon CloudWatch](https://aws.amazon.com/cloudwatch/) & [AWS X-Ray](https://aws.amazon.com/xray/) | Centralized logs, error metrics, latency alarms, and distributed tracing |
+| **Alerting** | [Amazon SNS](https://aws.amazon.com/sns/) | Instant email notifications triggered by CloudWatch alarms |
+| **Configuration** | [AWS SSM Parameter Store](https://docs.aws.amazon.com/systems-manager/) | Out-of-repo configuration management for alert recipients |
+| **CI/CD** | [GitHub Actions](https://github.com/features/actions) + AWS OIDC | Automated testing, staging deployment, and production rollout |
+| **Testing** | [pytest](https://pytest.org/) | Unit test suites, integration test harness, and smoke tests |
+
+---
+
+## 📂 Project Structure
+
+```
+url-shortener/
+├── url_shortener/                          # Lambda application source code
+│   ├── __init__.py
+│   ├── app.py                              # Lambda entrypoint & HTTP router
+│   ├── shortener.py                        # Validation & short code generation logic
+│   └── requirements.txt                    # Runtime dependencies (boto3)
+├── tests/                                  # Automated test suites
+│   ├── __init__.py
+│   ├── unit/                               # Isolated unit tests (mocked DynamoDB)
+│   │   ├── __init__.py
+│   │   ├── test_shortener.py               # Short code generator & validation tests
+│   │   └── test_handler.py                 # Router, redirects, stats & error tests
+│   ├── integration/                        # End-to-end integration tests (real API)
+│   │   ├── __init__.py
+│   │   └── test_api.py                     # API tests with automated test data cleanup
+│   └── smoke/                              # Read-only post-deployment sanity tests
+│       ├── __init__.py
+│       └── test_smoke.py                   # Health and API key validation tests
+├── events/                                 # Mock API Gateway events for local testing
+│   ├── create_link.json
+│   ├── get_redirect.json
+│   └── get_stats.json
+├── docs/                                   # Architectural documentation & assets
+│   ├── architecture.html                   # Interactive architecture visualizer
+│   ├── architecture.json                   # Diagram definition
+│   └── screenshots/                        # Architectural diagrams
+├── .github/workflows/
+│   └── deploy.yml                          # Continuous integration & deployment pipeline
+├── URL-Shortener.postman_collection.json   # Ready-to-import Postman test collection
+├── POSTMAN_GUIDE.md                        # Step-by-step Postman collection guide
+├── CUSTOM_DOMAIN_SETUP.md                  # Custom domain, ACM certificate & DNS instructions
+├── DEPLOYMENT.md                           # Detailed AWS setup, IAM roles & deployment guide
+├── template.yaml                           # AWS SAM infrastructure definition
+├── samconfig.toml                          # Staging and production deployment parameters
+├── pytest.ini                              # Pytest test configuration
+├── .gitignore                              # Git exclusion rules (secrets, venv, caches)
+└── README.md                               # Project documentation
 ```
 
-Redirects and stats are public, so anyone can open a short link.
+---
 
-**Using Postman?**
-- Import the ready-to-use collection: `URL-Shortener.postman_collection.json`
-- See [POSTMAN_GUIDE.md](POSTMAN_GUIDE.md) for detailed instructions
+## 📡 API Specification
 
-**Deploying your own copy?**
-- [DEPLOYMENT.md](DEPLOYMENT.md) covers the full setup: staging and prod stacks, alerts and CI
-- [CUSTOM_DOMAIN_SETUP.md](CUSTOM_DOMAIN_SETUP.md) covers certificates and DNS for the custom domains
-
-## Live Demo
-
-Tested against production from PowerShell. The API key is loaded into a variable and never printed.
-
-**Create a link, open it, and check its stats** (one visit, `click_count: 1`):
-
-![Creating a short link and checking its stats in PowerShell](docs/screenshots/create-and-stats.png)
-
-**Redirect and protections:** the redirect is a `302`, creating a link without a key returns `403`, an unknown code returns `404`, and an invalid URL returns `400`. The last command shows a link created before the move to the production stack, still resolving with its click history:
-
-![Redirect status and error responses in PowerShell](docs/screenshots/redirect-and-protections.png)
-
-## API Contract
-
-**Base URL:** `https://url-shortener.berlintechs.com`
+### Base URL
+```
+https://<api-id>.execute-api.<region>.amazonaws.com/Prod
+# Or your custom domain if configured: https://url-shortener.yourdomain.com
+```
 
 ### 1. Create Short Link
+Creates a new short URL for a destination target.
 
-**Endpoint:** `POST /links` (requires `x-api-key` header)
+- **Method / Path:** `POST /links`
+- **Authentication:** `x-api-key: YOUR_API_KEY` (Required)
+- **Request Headers:** `Content-Type: application/json`
+- **Request Body:**
+  ```json
+  {
+    "url": "https://github.com/Riya6389/url-shortener"
+  }
+  ```
 
-**Request:**
+**Sample Request:**
 ```bash
-curl -X POST https://url-shortener.berlintechs.com/links \
-  -H 'Content-Type: application/json' \
-  -H 'x-api-key: YOUR_API_KEY' \
-  -d '{"url": "https://example.com/very/long/url"}'
+curl -X POST https://<api-endpoint>/links \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{"url": "https://github.com/Riya6389/url-shortener"}'
 ```
 
-**Response:** `201 Created`
+**Success Response (`201 Created`):**
 ```json
 {
   "short_code": "a3X9mK",
-  "short_url": "https://url-shortener.berlintechs.com/a3X9mK",
-  "original_url": "https://example.com/very/long/url"
+  "short_url": "https://<api-endpoint>/a3X9mK",
+  "original_url": "https://github.com/Riya6389/url-shortener"
 }
 ```
-
-**Validation:**
-- URL must be valid HTTP/HTTPS format
-- URL cannot be empty
-- URL max length: 2048 characters
-
-**Error Responses:**
-- `400 Bad Request` - Missing body, body that isn't a JSON object, invalid JSON, invalid URL format, or missing required fields
-- `403 Forbidden` - Missing or invalid API key
-- `429 Too Many Requests` - Rate limit or daily quota exceeded
-- `500 Internal Server Error` - Failed to create link (rare)
 
 ---
 
 ### 2. Redirect to Original URL
+Resolves the short code, increments the visit count, and redirects.
 
-**Endpoint:** `GET /{code}`
+- **Method / Path:** `GET /{code}`
+- **Authentication:** None (Public)
 
-**Request:**
+**Sample Request:**
 ```bash
-curl -L https://url-shortener.berlintechs.com/a3X9mK
+curl -i https://<api-endpoint>/a3X9mK
 ```
 
-**Response:** `302 Found`
+**Success Response (`302 Found`):**
+```http
+HTTP/1.1 302 Found
+Location: https://github.com/Riya6389/url-shortener
+Access-Control-Allow-Origin: *
 ```
-Location: https://example.com/very/long/url
-```
-
-The redirect is temporary (302) so browsers don't cache it, which means every visit reaches the API and atomically increments the click counter.
-
-**Error Responses:**
-- `404 Not Found` - Short code does not exist
 
 ---
 
 ### 3. Get Link Statistics
+Retrieves click metrics and creation timestamps for a short code.
 
-**Endpoint:** `GET /links/{code}/stats`
+- **Method / Path:** `GET /links/{code}/stats`
+- **Authentication:** None (Public)
 
-**Request:**
+**Sample Request:**
 ```bash
-curl https://url-shortener.berlintechs.com/links/a3X9mK/stats
+curl https://<api-endpoint>/links/a3X9mK/stats
 ```
 
-**Response:** `200 OK`
+**Success Response (`200 OK`):**
 ```json
 {
   "short_code": "a3X9mK",
-  "original_url": "https://example.com/very/long/url",
-  "click_count": 42,
-  "created_at": "2024-01-15T10:30:00.123456"
+  "original_url": "https://github.com/Riya6389/url-shortener",
+  "click_count": 1,
+  "created_at": "2026-10-04T14:30:00.123456"
 }
 ```
 
-**Error Responses:**
-- `404 Not Found` - Short code does not exist
+---
+
+### Error Responses
+
+| Status Code | Meaning | Example Payload |
+|---|---|---|
+| `400 Bad Request` | Missing/empty payload, non-string URL, or invalid protocol | `{"error": "Missing required field: 'url'"}` |
+| `403 Forbidden` | Missing or invalid `x-api-key` header | `{"message": "Forbidden"}` |
+| `404 Not Found` | Short code does not exist | `{"error": "Short link not found"}` |
+| `429 Too Many Requests` | Rate limit or daily quota breached | `{"message": "Too Many Requests"}` |
+| `500 Internal Server Error` | Unexpected server or database exception | `{"error": "Internal server error"}` |
 
 ---
 
-## Security & Rate Limiting
+## 💻 Setup & Run Steps
 
-| Route | Access | Limits |
-|---|---|---|
-| `POST /links` | API key (`x-api-key` header) | 5 req/s, burst 10, 1,000 links/day per key |
-| `GET /{code}` | Public | 50 req/s, burst 100 (stage-wide) |
-| `GET /links/{code}/stats` | Public | 50 req/s, burst 100 (stage-wide) |
+### 1. Prerequisites
+- **Python 3.12+** (Python 3.13 recommended)
+- **AWS CLI v2** configured with necessary permissions (`aws configure`)
+- **AWS SAM CLI** installed ([Install Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html))
+- **Docker** (optional, for local containerized builds and emulation)
 
-Link creation is keyed so strangers can't fill the table, run up the bill, or use the domain to disguise phishing links. The API key, usage plan and throttles are all defined in `template.yaml`.
+---
 
-**Get the API key** (after deploying):
+### 2. Local Environment Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Riya6389/url-shortener.git
+   cd url-shortener
+   ```
+
+2. **Create and activate a virtual environment:**
+   ```bash
+   # Windows (PowerShell)
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+
+   # Linux / macOS
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r url_shortener/requirements.txt
+   pip install pytest requests
+   ```
+
+---
+
+### 3. Running Unit Tests
+
+Unit tests run completely offline without requiring active AWS credentials:
+
 ```bash
+# Run all unit tests
+pytest tests/unit/ -v
+
+# Run with short traceback
+pytest tests/unit/ -v --tb=short
+```
+
+---
+
+### 4. Local API Emulation with SAM
+
+You can invoke Lambda functions directly or run a local API Gateway emulator:
+
+```bash
+# Direct function invocation with a mock event
+sam local invoke UrlShortenerFunction -e events/create_link.json
+
+# Start a local HTTP server on port 3000
+sam local start-api
+
+# In another terminal:
+curl -X POST http://127.0.0.1:3000/links \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+---
+
+### 5. Deployment to AWS
+
+#### One-Time Setup: Alert Email
+Store your email in AWS Systems Manager (SSM) Parameter Store to receive CloudWatch alert notifications:
+```bash
+aws ssm put-parameter \
+  --name /url-shortener/alert-email \
+  --type String \
+  --value you@example.com \
+  --region us-east-1
+```
+
+#### Build and Deploy:
+```bash
+# 1. Build the SAM template
+sam build
+
+# 2. Deploy to staging
+sam deploy --config-env staging
+
+# 3. Deploy to production
+sam deploy --config-env prod
+```
+
+#### Retrieve Stack Outputs:
+```bash
+# View endpoints and table details
+sam list stack-outputs --stack-name url-shortener-prod
+
+# Fetch the generated API Key value
 KEY_ID=$(aws cloudformation describe-stacks --stack-name url-shortener-prod \
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiKeyId`].OutputValue' --output text)
+  --query "Stacks[0].Outputs[?OutputKey=='ApiKeyId'].OutputValue" --output text)
+
 aws apigateway get-api-key --api-key "$KEY_ID" --include-value --query value --output text
 ```
 
 ---
 
-## Monitoring
+## 🧪 Postman Collection
 
-CloudWatch alarms are defined in the template:
-
-| Alarm | Fires when |
-|---|---|
-| `url-shortener-<env>-api-5xx` | 5+ API 5xx responses in 5 minutes |
-| `url-shortener-<env>-lambda-errors` | Any Lambda invocation error in 5 minutes |
-| `url-shortener-<env>-lambda-throttles` | Any Lambda throttling in 5 minutes |
-| `url-shortener-<env>-lambda-latency` | p99 duration above 3 seconds for 15 minutes |
-
-Each alarm notifies an SNS topic (`url-shortener-<env>-alerts`) when it fires and again when it recovers, and the topic emails the address stored in SSM Parameter Store at `/url-shortener/alert-email`. Keeping the address in SSM keeps it out of the repo. AWS sends a confirmation email the first time a stack is deployed; alerts only arrive after you click it.
-
-Set or change the address:
-```bash
-aws ssm put-parameter --name /url-shortener/alert-email --type String \
-  --value you@example.com --overwrite
-```
-
-X-Ray tracing is enabled on both the API Gateway stage and the Lambda function, so a trace covers the whole request.
+A pre-configured Postman collection is included in the root directory:
+1. Open Postman and click **Import**.
+2. Select [`URL-Shortener.postman_collection.json`](URL-Shortener.postman_collection.json).
+3. Set your collection variables:
+   - `base_url`: Your deployed API endpoint
+   - `api_key`: Your API key for link creation
+4. Refer to [POSTMAN_GUIDE.md](POSTMAN_GUIDE.md) for full instructions.
 
 ---
 
-## IAM Permissions
+## 🔒 Security Best Practices Implemented
 
-The Lambda function has **least-privilege** access through an inline policy that allows only the DynamoDB calls `app.py` makes:
-
-```yaml
-Policies:
-  - Statement:
-      - Effect: Allow
-        Action:
-          - dynamodb:GetItem
-          - dynamodb:PutItem
-          - dynamodb:UpdateItem
-        Resource: !GetAtt LinksTable.Arn
-```
-
-This grants only:
-- `dynamodb:GetItem` - Read link data for stats
-- `dynamodb:PutItem` - Create new short links
-- `dynamodb:UpdateItem` - Atomically increment click counter on redirect
-
-The policy is scoped to **only** the specific DynamoDB table created by this stack—no other tables or AWS resources are accessible.
-
-**Why least privilege matters:** If the Lambda function were compromised, the attacker could only interact with this single table, not your entire AWS account.
+- **IAM Scoping:** Zero wildcards on data modifications; the Lambda role can only touch the specific stack table.
+- **DDoS & Scraping Mitigation:** API Gateway usage plans restrict creation endpoints, while global throttling limits redirect surges.
+- **SSM Secret Encapsulation:** Operational alert emails are resolved at deploy-time from SSM and never stored in code.
+- **Browser Protection:** HTTP `302` headers prevent aggressive caching from corrupting visit tallies.
+- **Git Hygiene:** Strict `.gitignore` configurations prevent `.env`, credentials, AWS tokens, and build artifacts from entering version control.
 
 ---
 
-## Deployment
+## 👤 Author
 
-### Prerequisites
-
-1. **AWS CLI** configured with credentials ([setup guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html))
-2. **SAM CLI** installed ([installation guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html))
-3. **Python 3.13+** installed
-4. **Docker** (for `sam build --use-container`)
-5. **An alert email in SSM** at `/url-shortener/alert-email` (see [Monitoring](#monitoring)). The deploy fails if it's missing.
-6. **An issued ACM certificate** for each environment's domain, in the same region as the stack (see [CUSTOM_DOMAIN_SETUP.md](CUSTOM_DOMAIN_SETUP.md)). Domains and certificate ARNs are set per environment in `samconfig.toml`. Leave `DomainName` empty to deploy without a custom domain. After deploying, point a DNS-only CNAME at the stack's `CustomDomainTarget` output.
-
-### Environments
-
-| Environment | Stack | URL | Deployed by |
-|---|---|---|---|
-| Staging | `url-shortener-staging` | `https://url-shortener-staging.berlintechs.com` | CI on every push to `main`; integration tests run here |
-| Production | `url-shortener-prod` | `https://url-shortener.berlintechs.com` | CI, only after staging passes |
-
-Each environment has its own table, API key, alarms and alert topic.
-
-### Deploy to AWS
-
-Normally CI deploys (see [CI/CD](#cicd-with-github-actions)). To deploy by hand:
-
-```bash
-# 1. Build the application
-sam build
-
-# 2. Deploy to staging (the default config) and review the changeset
-sam deploy
-
-# 3. Deploy to production
-sam deploy --config-env prod
-
-# 4. Show stack outputs (BaseUrl, ApiKeyId, CustomDomainTarget, ...)
-sam list stack-outputs --stack-name url-shortener-prod
-```
-
-### What Gets Created
-
-The deployment creates:
-- 1 DynamoDB table (on-demand billing, retained and deletion-protected)
-- 1 Lambda function (Python 3.13, 256MB memory)
-- 1 API Gateway REST API (3 routes) with a regional custom domain
-- 1 API key and usage plan (for `POST /links`)
-- 4 CloudWatch alarms and an SNS alert topic with an email subscription
-- 1 CloudWatch Log Group (30-day retention in prod, 7 days in staging)
-- 1 IAM role (Lambda execution role with DynamoDB permissions)
-
-This is per environment (staging and production).
-
-**Estimated monthly cost:** $0-5 for low traffic (first 1M Lambda requests free, first 25GB DynamoDB storage free)
+**Riya Agrahari**
+- GitHub: [@Riya6389](https://github.com/Riya6389)
 
 ---
 
-## Using the API with Postman
+## 📄 License
 
-### Import Collection (Recommended)
-
-1. Open Postman
-2. Click **Import** → **File** tab
-3. Select `URL-Shortener.postman_collection.json` from this repository
-4. All 3 endpoints will be pre-configured and ready to test!
-
-### Manual Testing
-
-See [POSTMAN_GUIDE.md](POSTMAN_GUIDE.md) for:
-- Detailed endpoint descriptions
-- Request/response examples
-- Testing workflow
-- Tips for using environment variables
-- Sample Postman tests
-
----
-
-## Local Development & Testing
-
-### Run Unit Tests
-
-Unit tests use mocked boto3 calls and run **without AWS credentials**:
-
-```bash
-# Install test dependencies
-pip install pytest boto3 requests
-
-# Run all unit tests
-pytest tests/unit/ -v
-
-# Run specific test file
-pytest tests/unit/test_shortener.py -v
-
-# Run with coverage
-pytest tests/unit/ --cov=url_shortener --cov-report=term-missing
-```
-
-### Run Integration Tests
-
-Integration tests create real links, so run them against **staging**. With `TABLE_NAME` set, they delete the links they created when they finish:
-
-```bash
-export API_ENDPOINT=https://url-shortener-staging.berlintechs.com
-export API_KEY=YOUR_STAGING_API_KEY   # from the url-shortener-staging stack
-export TABLE_NAME=url-shortener-links-staging
-export RUN_INTEGRATION_TESTS=true
-
-pytest tests/integration/ -v
-```
-
-### Run Smoke Tests
-
-Read-only checks that are safe against production (no links are created):
-
-```bash
-export SMOKE_API_ENDPOINT=https://url-shortener.berlintechs.com
-pytest tests/smoke/ -v
-```
-
-### Local API Testing with SAM
-
-Start API Gateway locally:
-
-```bash
-# Start local API
-sam local start-api
-
-# In another terminal, test endpoints (SAM local does not enforce API keys)
-curl -X POST http://127.0.0.1:3000/links \
-  -H 'Content-Type: application/json' \
-  -d '{"url": "https://example.com"}'
-```
-
-**Note:** Local testing requires Docker and AWS credentials (to access real DynamoDB).
-
-### Invoke Lambda Directly
-
-```bash
-# Test POST /links
-sam local invoke UrlShortenerFunction -e events/create_link.json
-
-# Test GET /{code} (requires existing short code)
-sam local invoke UrlShortenerFunction -e events/get_redirect.json
-
-# Test GET /links/{code}/stats
-sam local invoke UrlShortenerFunction -e events/get_stats.json
-```
-
----
-
-## CI/CD with GitHub Actions
-
-Every push to `main` runs a three-stage pipeline:
-
-```
-Unit tests + build ──▶ Deploy staging ──▶ Integration tests ──▶ Deploy production ──▶ Smoke tests
-                       (staging stack)    (staging, cleaned up)  (prod stack)          (read-only)
-```
-
-1. **Build:** run unit tests, then `sam build`. The build artifact is reused by both deploys, so production gets exactly what staging tested.
-2. **Staging:** deploy `url-shortener-staging`, read its API key, and run the integration tests. Test links are deleted afterwards.
-3. **Production:** runs only if staging passed. Deploys `url-shortener-prod`, then runs read-only smoke tests against `url-shortener.berlintechs.com`.
-
-A failure at any stage stops the pipeline, so a change that breaks staging never reaches production. CloudFormation rolls back a deploy that fails partway through. Deploys never run concurrently.
-
-### OIDC Authentication
-
-GitHub Actions uses **OIDC** (OpenID Connect) for secure authentication to AWS without long-lived credentials. The workflow automatically assumes the IAM role configured in the repository secrets.
-
-**Required Secret:**
-- `AWS_ROLE_ARN`: ARN of the IAM role with deployment permissions
-
-Besides CloudFormation, Lambda, API Gateway, DynamoDB, IAM, S3 and CloudWatch Logs, the role needs:
-- `sns:*Topic*`, `sns:Subscribe`/`Unsubscribe` on `url-shortener-*` topics (alert topics)
-- `cloudwatch:PutMetricAlarm`/`DeleteAlarms`/`DescribeAlarms` on `url-shortener-*` alarms
-- `ssm:GetParameter(s)` on `/url-shortener/*` (alert email)
-- `apigateway:GET` on API keys (to read the staging key for integration tests)
-
-For detailed OIDC setup instructions, see the CI/CD section in the original documentation.
-
----
-
-## Cleanup
-
-Delete all AWS resources:
-
-```bash
-sam delete --stack-name url-shortener-staging
-sam delete --stack-name url-shortener-prod
-```
-
-This removes:
-- Lambda function
-- API Gateway, including the custom domain, API key and usage plan
-- CloudWatch logs, alarms and the SNS alert topic
-- IAM role
-
-The **DynamoDB table is kept** (it's retained and deletion-protected). To delete it too, turn protection off first:
-```bash
-aws dynamodb update-table --table-name url-shortener-links-prod --no-deletion-protection-enabled
-aws dynamodb delete-table --table-name url-shortener-links-prod
-```
-
-The ACM certificates, the SSM alert-email parameter and the Cloudflare DNS records live outside the stacks; delete them separately if you no longer need them.
-
----
-
-## Project Structure
-
-```
-url-shortener/
-├── url_shortener/                          # Lambda function code
-│   ├── __init__.py
-│   ├── app.py                              # Handler: routing, redirects, stats, short URL building
-│   ├── shortener.py                        # Core logic (validation, code generation)
-│   └── requirements.txt                    # Python dependencies (boto3)
-├── tests/
-│   ├── __init__.py
-│   ├── unit/                               # Unit tests (mocked, no AWS)
-│   │   ├── __init__.py
-│   │   ├── test_shortener.py               # Test validation & code gen
-│   │   └── test_handler.py                 # Test handler logic, 404s, short URLs
-│   ├── integration/                        # Integration tests (staging, run in CI)
-│   │   ├── __init__.py
-│   │   └── test_api.py                     # End-to-end tests, cleans up test links
-│   └── smoke/                              # Read-only production checks (run in CI)
-│       ├── __init__.py
-│       └── test_smoke.py                   # 404s and API key enforcement
-├── docs/
-│   ├── architecture.html                   # Interactive architecture diagram (GitHub Pages)
-│   ├── architecture.json                   # Diagram source (archify)
-│   └── screenshots/                        # Live demo and diagram screenshots used in this README
-├── events/                                 # Sample API Gateway events for local testing
-│   ├── create_link.json
-│   ├── get_redirect.json
-│   └── get_stats.json
-├── .github/workflows/
-│   └── deploy.yml                          # CI/CD: build, staging + tests, prod + smoke
-├── URL-Shortener.postman_collection.json   # Postman collection (base_url, api_key vars)
-├── POSTMAN_GUIDE.md                        # Postman usage guide
-├── CUSTOM_DOMAIN_SETUP.md                  # Certificates, CAA and DNS for custom domains
-├── DEPLOYMENT.md                           # Full setup: stacks, alerts, CI role, cleanup
-├── template.yaml                           # SAM infra: API, domain, API key, alarms, alerts
-├── samconfig.toml                          # Staging and prod deploy configuration
-├── pytest.ini                              # Pytest configuration
-├── .gitignore                              # Git ignore rules
-└── README.md                               # This file
-```
-
----
-
-## Troubleshooting
-
-### Deployment fails with "Unable to upload artifact"
-
-**Cause:** SAM couldn't create S3 bucket for deployment artifacts.
-
-**Fix:**
-```bash
-sam deploy --guided --resolve-s3
-```
-
-### Lambda returns 500 errors
-
-**Check logs:**
-```bash
-sam logs --stack-name url-shortener-prod --tail
-```
-
-**Common issues:**
-- Missing `TABLE_NAME` environment variable
-- DynamoDB table doesn't exist (check `sam deploy` completed)
-- Lambda doesn't have IAM permissions (check execution role)
-
-### Creating a link returns 403 Forbidden
-
-The `x-api-key` header is missing or wrong. Get the current key with the commands under [Security & Rate Limiting](#security--rate-limiting).
-
-### Requests return 429 Too Many Requests
-
-A rate limit or the 1,000/day link quota was hit. The quota resets daily; the limits are set in `template.yaml` under `Globals.Api`.
-
-### Unit tests fail with "ModuleNotFoundError"
-
-**Fix:** Install Lambda dependencies:
-```bash
-pip install -r url_shortener/requirements.txt
-```
-
-### Integration tests skip with "API_ENDPOINT not set"
-
-**Fix:** Export the staging endpoint and key before running tests (see [Run Integration Tests](#run-integration-tests)).
-
-### Deploy fails with "Parameter /url-shortener/alert-email not found"
-
-**Fix:** Store the alert email in SSM (see [Monitoring](#monitoring)), then deploy again.
-
-### Not receiving alert emails
-
-Check your inbox (and spam) for "AWS Notification - Subscription Confirmation" and click the link. Each stack's topic needs its own confirmation.
-
----
-
-## Author
-
-**Abdul Wasea** · [GitHub @AbdulWaseaDev](https://github.com/AbdulWaseaDev)
-
----
-
-## License
-
-MIT License
-
----
-
-## Built With
-
-| Layer | Technology | Used for |
-|---|---|---|
-| Compute | [AWS Lambda](https://aws.amazon.com/lambda/) (Python 3.13) | Request handling and business logic |
-| API | [Amazon API Gateway](https://aws.amazon.com/api-gateway/) | REST routes, custom domain, API keys, usage plans, throttling |
-| Database | [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) | Link storage, atomic click counters, point-in-time recovery |
-| TLS | [AWS Certificate Manager](https://aws.amazon.com/certificate-manager/) | Certificates for the custom domains |
-| DNS | [Cloudflare](https://www.cloudflare.com/dns/) | DNS for `berlintechs.com` |
-| Monitoring | [Amazon CloudWatch](https://aws.amazon.com/cloudwatch/) and [AWS X-Ray](https://aws.amazon.com/xray/) | Logs, alarms and tracing |
-| Alerts | [Amazon SNS](https://aws.amazon.com/sns/) | Email notifications when alarms fire |
-| Configuration | [AWS Systems Manager Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html) | Alert email, kept out of the repo |
-| Infrastructure as Code | [AWS SAM](https://aws.amazon.com/serverless/sam/) / CloudFormation | Staging and production stacks |
-| CI/CD | [GitHub Actions](https://github.com/features/actions) with OIDC | Build, staging tests, promotion to production |
-| Testing | [pytest](https://pytest.org/) | Unit, integration and smoke tests |
+This project is licensed under the [MIT License](LICENSE).

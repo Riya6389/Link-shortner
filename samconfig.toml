@@ -27,7 +27,7 @@ confirm_changeset = true
 resolve_s3 = true
 s3_prefix = "url-shortener-staging"
 region = "us-east-1"
-parameter_overrides = "Environment=\"staging\" DomainName=\"url-shortener-staging.berlintechs.com\" CertificateArn=\"arn:aws:acm:us-east-1:633605692642:certificate/4d136ddf-d322-4aca-8aa1-fb2005bcbc4e\""
+parameter_overrides = "Environment=\"staging\""
 image_repositories = []
 
 [default.package.parameters]
@@ -43,6 +43,7 @@ warm_containers = "EAGER"
 warm_containers = "EAGER"
 
 # Staging - receives every push first; integration tests run here
+# To configure a custom domain, append: DomainName="url-shortener-staging.yourdomain.com" CertificateArn="arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID"
 [staging]
 [staging.deploy.parameters]
 stack_name = "url-shortener-staging"
@@ -51,9 +52,10 @@ confirm_changeset = true
 resolve_s3 = true
 s3_prefix = "url-shortener-staging"
 region = "us-east-1"
-parameter_overrides = "Environment=\"staging\" DomainName=\"url-shortener-staging.berlintechs.com\" CertificateArn=\"arn:aws:acm:us-east-1:633605692642:certificate/4d136ddf-d322-4aca-8aa1-fb2005bcbc4e\""
+parameter_overrides = "Environment=\"staging\""
 
-# Production - serves url-shortener.berlintechs.com
+# Production
+# To configure a custom domain, append: DomainName="url-shortener.yourdomain.com" CertificateArn="arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID"
 [prod]
 [prod.deploy.parameters]
 stack_name = "url-shortener-prod"
@@ -62,4 +64,5 @@ confirm_changeset = true
 resolve_s3 = true
 s3_prefix = "url-shortener-prod"
 region = "us-east-1"
-parameter_overrides = "Environment=\"prod\" DomainName=\"url-shortener.berlintechs.com\" CertificateArn=\"arn:aws:acm:us-east-1:633605692642:certificate/44fddf0a-dc3c-441f-a109-19002961ff39\""
+parameter_overrides = "Environment=\"prod\""
+

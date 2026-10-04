@@ -2,7 +2,8 @@
 
 ## API Endpoint
 ```
-https://url-shortener.berlintechs.com
+https://<your-api-id>.execute-api.us-east-1.amazonaws.com/Prod
+# Or your custom domain if configured: https://url-shortener.yourdomain.com
 ```
 
 ## Quick Start - Import Collection
@@ -36,19 +37,19 @@ The collection includes all three endpoints pre-configured and ready to use!
 ```json
 {
   "short_code": "abc123",
-  "short_url": "https://url-shortener.berlintechs.com/abc123",
+  "short_url": "https://<your-domain>/abc123",
   "original_url": "https://example.com"
 }
 ```
 
 **Postman Setup:**
 - Method: `POST`
-- URL: `https://url-shortener.berlintechs.com/links`
+- URL: `{{base_url}}/links`
 - Headers: `Content-Type: application/json`, `x-api-key: YOUR_API_KEY`
 - Body (raw JSON):
   ```json
   {
-    "url": "https://github.com/AbdulWaseaDev/url-shortener"
+    "url": "https://github.com/Riya6389/url-shortener"
   }
   ```
 
@@ -64,7 +65,7 @@ The collection includes all three endpoints pre-configured and ready to use!
 
 **Postman Setup:**
 - Method: `GET`
-- URL: `https://url-shortener.berlintechs.com/abc123`
+- URL: `{{base_url}}/abc123`
 - Replace `abc123` with your actual short code
 
 **Note:** Postman will show the redirect response. To see the final URL, check the response headers or disable "Automatically follow redirects" in Postman settings.
@@ -87,7 +88,7 @@ The collection includes all three endpoints pre-configured and ready to use!
 
 **Postman Setup:**
 - Method: `GET`
-- URL: `https://url-shortener.berlintechs.com/links/abc123/stats`
+- URL: `{{base_url}}/links/abc123/stats`
 - Replace `abc123` with your actual short code
 
 ---
@@ -115,7 +116,7 @@ The collection includes all three endpoints pre-configured and ready to use!
 ### 400 Bad Request
 ```json
 {
-  "error": "Missing url field"
+  "error": "Missing required field: 'url'"
 }
 ```
 
@@ -155,7 +156,7 @@ Rate limit or daily quota exceeded:
 
 - **Save responses:** In Postman, save example responses for each endpoint
 - **Environment variables:** Create a Postman environment with:
-  - `base_url`: `https://url-shortener.berlintechs.com`
+  - `base_url`: `https://<your-api-id>.execute-api.us-east-1.amazonaws.com/Prod` (or custom domain)
   - `api_key`: Your API key for creating links
   - `short_code`: Save this after creating a link
 - **Tests:** Add Postman tests to validate responses automatically
@@ -177,10 +178,11 @@ pm.test("Response has short_code", function () {
 
 ## Architecture
 
-- **Domain:** `url-shortener.berlintechs.com` (API Gateway regional custom domain; staging runs on `url-shortener-staging.berlintechs.com`)
+- **Domain:** API Gateway default domain or optional regional custom domain
 - **API Gateway:** REST API with Lambda proxy integration, API key on `POST /links`, rate limiting
 - **Lambda:** Python 3.13 runtime, X-Ray tracing (also on the API Gateway stage)
 - **DynamoDB:** Serverless NoSQL database (on-demand billing, retained and deletion-protected)
 - **CloudWatch:** Logs (30-day retention in prod, 7 days in staging), alarms that email on errors, throttling and latency
 
 See the [README](README.md) for details.
+

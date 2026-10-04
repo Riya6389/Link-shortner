@@ -2,7 +2,7 @@
 
 How to deploy your own copy of the URL shortener from scratch: a **staging** and a **production** stack, each on its own custom domain, with email alerts and a GitHub Actions pipeline that tests on staging before promoting to production.
 
-Examples use this project's names (`berlintechs.com`, `us-east-1`). Replace them with your own.
+Examples use placeholder names (`yourdomain.com`, `us-east-1`). Replace them with your own.
 
 ---
 
@@ -16,7 +16,7 @@ python --version           # Python 3.13+
 docker --version           # for sam build --use-container (CI uses it)
 ```
 
-You also need a domain whose DNS you control (this project uses Cloudflare).
+You also need a domain whose DNS you control (if using custom domains).
 
 ---
 
@@ -52,7 +52,7 @@ aws acm list-certificates --region us-east-1 \
 
 ### 2.3 Point samconfig.toml at your domains
 
-In `samconfig.toml`, set `DomainName` and `CertificateArn` in the `[default]`/`[staging]` and `[prod]` sections to your domains and the certificate ARNs from 2.2. Set `DomainName=""` to deploy an environment without a custom domain.
+In `samconfig.toml`, set `DomainName` and `CertificateArn` in the `[default]`/`[staging]` and `[prod]` sections to your domains and the certificate ARNs from 2.2. If you don't need custom domains, leave them omitted to use the default API Gateway execute-api endpoint.
 
 ---
 
@@ -98,15 +98,16 @@ Each stack creates:
 ### 3.2 Test it
 
 ```bash
-BASE=https://url-shortener.yourdomain.com
+BASE=https://url-shortener.yourdomain.com  # Or your API Gateway URL
 KEY=your-api-key
 
 curl -X POST $BASE/links -H 'Content-Type: application/json' -H "x-api-key: $KEY" \
-  -d '{"url": "https://github.com/AbdulWaseaDev"}'
+  -d '{"url": "https://github.com/Riya6389"}'
 # {"short_code": "a3X9mK", "short_url": "https://url-shortener.yourdomain.com/a3X9mK", ...}
 
 curl -i $BASE/a3X9mK                 # 302 with Location header
 curl $BASE/links/a3X9mK/stats        # click_count: 1
+```
 ```
 
 ---
@@ -144,7 +145,7 @@ The workflow (`.github/workflows/deploy.yml`) runs on every push to `main`:
    ```json
    "Condition": {
      "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-     "StringLike": { "token.actions.githubusercontent.com:sub": "repo:YOUR_GITHUB_USERNAME/url-shortener:*" }
+     "StringLike": { "token.actions.githubusercontent.com:sub": "repo:Riya6389/url-shortener:*" }
    }
    ```
 

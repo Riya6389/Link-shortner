@@ -178,12 +178,22 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
+      - name: Read prod stack outputs
+        id: prod_outputs
+        run: |
+          PROD_ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name url-shortener-prod \
+            --query "Stacks[0].Outputs[?OutputKey=='BaseUrl'].OutputValue" \
+            --output text)
+          echo "PROD_ENDPOINT=${PROD_ENDPOINT}" >> $GITHUB_OUTPUT
+
       - name: Run smoke tests (production, read-only)
         run: pytest tests/smoke/ -v --tb=short
         env:
-          SMOKE_API_ENDPOINT: https://url-shortener.berlintechs.com
+          SMOKE_API_ENDPOINT: ${{ steps.prod_outputs.outputs.PROD_ENDPOINT }}
 
       - name: Deployment Summary
         run: |
           echo "✅ Staging passed integration tests; production deployed and smoke-tested"
-          echo "Production: https://url-shortener.berlintechs.com"
+          echo "Production: ${{ steps.prod_outputs.outputs.PROD_ENDPOINT }}"
+

@@ -5,14 +5,15 @@ Without a custom domain, short links use the API Gateway URL:
 https://abc123xyz.execute-api.us-east-1.amazonaws.com/Prod/a3X9mK
 ```
 
-With one, they look like this project's production links:
+With one, they look like this:
 ```
-https://url-shortener.berlintechs.com/a3X9mK
+https://url-shortener.yourdomain.com/a3X9mK
 ```
 
 The custom domain is part of `template.yaml`. You request a certificate, set two parameters, deploy, and add a DNS record. The Lambda builds short URLs from whatever domain the request came in on, so no code or environment variable changes are needed.
 
-The steps below use Cloudflare for DNS, as this project does. Any DNS provider that supports CNAME records works the same way.
+The steps below use Cloudflare for DNS as an example. Any DNS provider that supports CNAME records works the same way.
+
 
 ---
 
@@ -90,7 +91,7 @@ Keep it **DNS only**. If you turn on Cloudflare's proxy, set SSL/TLS mode to **F
 ```bash
 curl -X POST https://url-shortener.yourdomain.com/links \
   -H 'Content-Type: application/json' -H 'x-api-key: YOUR_API_KEY' \
-  -d '{"url": "https://github.com/AbdulWaseaDev/url-shortener"}'
+  -d '{"url": "https://github.com/Riya6389/url-shortener"}'
 # "short_url": "https://url-shortener.yourdomain.com/a3X9mK"
 
 curl -i https://url-shortener.yourdomain.com/a3X9mK   # 302
